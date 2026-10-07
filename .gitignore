@@ -1,0 +1,12 @@
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+.kotlin
+.idea/
+*.iml
+.DS_Store
+.devloop/
+captures/
+*.keystore
+!debug.keystore
