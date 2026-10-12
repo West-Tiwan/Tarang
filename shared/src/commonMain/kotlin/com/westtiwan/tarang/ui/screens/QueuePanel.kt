@@ -2,7 +2,7 @@ package com.westtiwan.tarang.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -84,9 +85,17 @@ fun QueuePanel(compact: Boolean) {
             itemsIndexed(st.queue, key = { i, s -> "$i-${s.id}" }) { i, song ->
                 val isCurrent = i == st.index
                 val dragging = i == dragIndex
+                val target = if (dragIndex >= 0) (dragIndex + kotlin.math.round(dragOffset / rowPx).toInt()).coerceIn(0, st.queue.lastIndex) else -1
+                val shift = when {
+                    dragIndex < 0 || dragging -> 0f
+                    i in (dragIndex + 1)..target -> -rowPx
+                    i in target until dragIndex -> rowPx
+                    else -> 0f
+                }
                 Row(
                     Modifier.fillMaxWidth().height(rowHeight)
-                        .graphicsLayer { translationY = if (dragging) dragOffset else 0f; shadowElevation = if (dragging) 12f else 0f }
+                        .zIndex(if (dragging) 1f else 0f)
+                        .graphicsLayer { translationY = if (dragging) dragOffset else shift; shadowElevation = if (dragging) 16f else 0f }
                         .background(if (dragging) MaterialTheme.colorScheme.surfaceContainerHighest else androidx.compose.ui.graphics.Color.Transparent)
                         .clickable { app.player.skipTo(i) }
                         .padding(horizontal = 12.dp),
@@ -107,8 +116,8 @@ fun QueuePanel(compact: Boolean) {
                     if (!compact || !isCurrent) IconButton({ app.player.remove(i) }) { Icon(Icons.Rounded.Close, "Remove", Modifier.size(18.dp)) }
                     Icon(
                         Icons.Rounded.DragHandle, "Reorder",
-                        modifier = Modifier.padding(8.dp).pointerInput(st.queue.size) {
-                            detectDragGesturesAfterLongPress(
+                        modifier = Modifier.padding(8.dp).pointerInput(i, st.queue.size) {
+                            detectDragGestures(
                                 onDragStart = { dragIndex = i; dragOffset = 0f },
                                 onDragEnd = {
                                     val target = (dragIndex + (dragOffset / rowPx).let { kotlin.math.round(it).toInt() }).coerceIn(0, st.queue.lastIndex)
