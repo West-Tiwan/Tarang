@@ -39,3 +39,8 @@ compose.desktop {
         }
     }
 }
+
+// Development log for `gradle run`, never set in packaged builds.
+tasks.withType<JavaExec>().configureEach {
+    if (name == "run") systemProperty("tarang.debugLog", rootProject.file(".devloop/app.log").absolutePath)
+}

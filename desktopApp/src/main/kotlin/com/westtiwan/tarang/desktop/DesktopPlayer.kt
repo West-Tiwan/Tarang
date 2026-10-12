@@ -75,6 +75,8 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
     private val cacheDir = File(Platform.cacheDir(), "audio").apply { mkdirs() }
     private val tracks = ConcurrentHashMap<String, CachedTrack>()
     private val lock = Object()
+    /** Guards the output line so only the current track's thread can write to it. */
+    private val writeLock = Object()
 
     private var queue: List<Song> = emptyList()
     private var order: List<Int> = emptyList()
@@ -416,6 +418,9 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
 
     private fun startTrack(startMs: Long, autoPlay: Boolean) {
         val gen = ++generation
+        seekRequest = null
+        // Drop whatever the previous track left in the output buffer right away.
+        line?.let { l -> thread(isDaemon = true) { synchronized(writeLock) { if (gen == generation) runCatching { l.flush() } } } }
         val song = currentSong ?: return
         positionMs = startMs
         playing = autoPlay
@@ -428,9 +433,22 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
         decoderAlive = true
         try {
             val track = obtain(song) ?: error("Not connected to a server")
+            DevLog.log("PLAY id=${song.id} title=\"${song.title}\" artist=\"${song.artist}\" album=\"${song.album}\" suffix=${song.suffix} path=\"${song.path}\" file=${track.file.name}")
             var decoder = openDecoder(track)
+            if (gen != generation) { decoder.close(); return }
+            thread(isDaemon = true) {
+                // Once enough of the file is here, compare its tags with what the server said it is.
+                var waited = 0
+                while (!track.complete && track.file.length() < 256 * 1024 && waited < 200) { Thread.sleep(50); waited++ }
+                val tags = TagPeek.read(track.file)
+                val match = tags["TITLE"]?.let { it.equals(song.title, ignoreCase = true) }
+                DevLog.log("TAGS id=${song.id} file=${track.file.name} tags=$tags matchesTitle=$match")
+            }
             val fmt = decoder.format
-            val l = openLine(fmt)
+            val l = synchronized(writeLock) {
+                if (gen != generation) { decoder.close(); return }
+                openLine(fmt).also { it.flush() }
+            }
             if (startMs > 0) decoder.skipFrames(startMs * fmt.sampleRate / 1000)
             var framesPlayed = startMs * fmt.sampleRate / 1000
             audioInfo = AudioInfo(
@@ -476,7 +494,10 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
                         out[o++] = x.toByte(); out[o++] = (x shr 8).toByte()
                     }
                 }
-                l.write(out, 0, o)
+                val wrote = synchronized(writeLock) {
+                    if (gen == generation) { l.write(out, 0, o); true } else false
+                }
+                if (!wrote) break
                 framesPlayed += n / fmt.channels
                 // Account for audio still sitting in the line buffer.
                 val buffered = (l.bufferSize - l.available()) / l.format.frameSize
