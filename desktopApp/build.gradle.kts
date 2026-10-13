@@ -29,7 +29,7 @@ compose.desktop {
         jvmArgs += listOf("-Xmx1g")
         nativeDistributions {
             targetFormats(TargetFormat.Dmg)
-            modules("java.net.http", "java.desktop", "java.sql", "jdk.unsupported")
+            modules("java.desktop", "java.instrument", "java.management", "java.net.http", "java.sql", "java.logging", "java.naming", "jdk.unsupported", "jdk.crypto.ec", "jdk.accessibility")
             packageName = "Tarang"
             packageVersion = "1.0.0"
             macOS {

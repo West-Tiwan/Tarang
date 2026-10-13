@@ -134,7 +134,7 @@ fun SettingsScreen() {
             app.toast("Cache cleared")
         }
 
-        Text("Tarang 0.1.0 • ${Platform.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        Text("Tarang 1.0.0 • ${Platform.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
     }
 
     when (picker) {
