@@ -93,6 +93,10 @@ class AppContainer(
         JsonStore(joinPath(dataDir, "downloads.json"), DownloadsState.serializer(), { DownloadsState() }, scope),
         http, joinPath(dataDir, "downloads"), scope, { api }, { settings.value },
     )
+    val artistArt = com.westtiwan.tarang.art.ArtistArt(
+        JsonStore(joinPath(dataDir, "artist_art.json"), com.westtiwan.tarang.art.ArtistArtState.serializer(), { com.westtiwan.tarang.art.ArtistArtState() }, scope),
+        http, joinPath(dataDir, "artist_art"), { nowMillis() },
+    )
     val lyrics = LyricsService(http, joinPath(Platform.cacheDir(), "lyrics"))
     val lyricsProcessor = LyricsProcessor()
 
@@ -196,7 +200,7 @@ class AppContainer(
             }
         }
         scope.launch {
-            merge(eqStore.state.map { it.updatedAt }, smartStore.state.map { it.updatedAt })
+            merge(eqStore.state.map { it.updatedAt }, smartStore.state.map { it.updatedAt }, artistArt.state.map { it.updatedAt })
                 .distinctUntilChanged().drop(1).debounce(4000)
                 .collect { pushSyncedSettings() }
         }
@@ -212,6 +216,7 @@ class AppContainer(
         if (remote.eqUpdatedAt > eqStore.value.updatedAt) {
             eqStore.update { it.copy(presets = remote.eqPresets, deviceProfiles = remote.deviceProfiles, updatedAt = remote.eqUpdatedAt) }
         }
+        artistArt.merge(remote.artistImages, remote.artistImagesUpdatedAt)
         if (remote.smartUpdatedAt > smartStore.value.updatedAt && remote.smart.isNotEmpty()) {
             smartStore.update { it.copy(playlists = remote.smart, updatedAt = remote.smartUpdatedAt) }
         }
@@ -220,7 +225,7 @@ class AppContainer(
     suspend fun pushSyncedSettings() {
         val a = api ?: return
         if (!settings.value.syncEqToServer || offline) return
-        runCatching { SettingsSync.push(a, eqStore.value, smartStore.value) }
+        runCatching { SettingsSync.push(a, eqStore.value, smartStore.value, artistArt.syncable(), artistArt.state.value.updatedAt) }
     }
 
     // -------- Smart playlists --------

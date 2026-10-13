@@ -15,7 +15,13 @@ import com.westtiwan.tarang.playback.AudioBus
 import com.westtiwan.tarang.ui.PlatformUi
 import com.westtiwan.tarang.ui.screens.SettingSwitch
 
-class AndroidPlatformUi(private val app: AppContainer) : PlatformUi() {
+class AndroidPlatformUi(
+    private val app: AppContainer,
+    private val picker: (suspend () -> ByteArray?)? = null,
+) : PlatformUi() {
+    override val supportsImagePicking: Boolean get() = picker != null
+    override suspend fun pickImage(): ByteArray? = picker?.invoke()
+
     override val audioSettings: (@Composable () -> Unit) = {
         val s by app.settings.collectAsState()
         val current by AudioBus.current.collectAsState()

@@ -16,9 +16,22 @@ import com.westtiwan.tarang.App
 import com.westtiwan.tarang.AppContainer
 import com.westtiwan.tarang.ui.Navigator
 import com.westtiwan.tarang.ui.PlatformUi
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 private object DesktopUi : PlatformUi() {
     override val isDesktop = true
+    override val supportsImagePicking = true
+
+    override suspend fun pickImage(): ByteArray? = suspendCancellableCoroutine { cont ->
+        javax.swing.SwingUtilities.invokeLater {
+            val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Choose an image", java.awt.FileDialog.LOAD)
+            dialog.setFilenameFilter { _, name -> name.lowercase().substringAfterLast('.') in setOf("jpg", "jpeg", "png", "webp", "gif", "bmp") }
+            dialog.isVisible = true
+            val file = dialog.files.firstOrNull()
+            cont.resume(file?.readBytes())
+        }
+    }
 }
 
 fun main() {

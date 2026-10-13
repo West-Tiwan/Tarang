@@ -16,6 +16,8 @@ data class SyncedSettings(
     val deviceProfiles: Map<String, String> = emptyMap(),
     val smartUpdatedAt: Long = 0,
     val smart: List<SmartPlaylist> = emptyList(),
+    val artistImagesUpdatedAt: Long = 0,
+    val artistImages: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -34,13 +36,15 @@ object SettingsSync {
         return runCatching { json.decodeFromString(SyncedSettings.serializer(), comment) }.getOrNull()
     }
 
-    suspend fun push(api: SubsonicApi, eq: EqState, smart: SmartState) {
+    suspend fun push(api: SubsonicApi, eq: EqState, smart: SmartState, artistImages: Map<String, String> = emptyMap(), artistImagesUpdatedAt: Long = 0) {
         val payload = SyncedSettings(
             eqUpdatedAt = eq.updatedAt,
             eqPresets = eq.presets,
             deviceProfiles = eq.deviceProfiles,
             smartUpdatedAt = smart.updatedAt,
             smart = smart.playlists,
+            artistImagesUpdatedAt = artistImagesUpdatedAt,
+            artistImages = artistImages,
         )
         val text = json.encodeToString(SyncedSettings.serializer(), payload)
         val existing = api.getPlaylists().firstOrNull { isSettingsPlaylist(it.name) && it.owner == api.server.username }

@@ -99,4 +99,7 @@ open class PlatformUi {
     /** Extra rows for the audio section of settings, for example USB DAC controls. */
     open val audioSettings: (@Composable () -> Unit)? = null
     open val isDesktop: Boolean = false
+    /** Lets the user pick an image file. Returns its bytes, or null when cancelled or unsupported. */
+    open suspend fun pickImage(): ByteArray? = null
+    open val supportsImagePicking: Boolean = false
 }

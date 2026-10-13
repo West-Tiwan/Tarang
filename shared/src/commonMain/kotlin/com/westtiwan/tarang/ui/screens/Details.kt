@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.AddPhotoAlternate
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Delete
@@ -68,6 +69,8 @@ import com.westtiwan.tarang.download.DownloadStatus
 import com.westtiwan.tarang.ui.AddToPlaylistDialog
 import com.westtiwan.tarang.ui.AlbumCard
 import com.westtiwan.tarang.ui.ArtistCircle
+import com.westtiwan.tarang.ui.ArtistImage
+import com.westtiwan.tarang.ui.ArtistShape
 import com.westtiwan.tarang.ui.CoverArt
 import com.westtiwan.tarang.ui.LoadContent
 import com.westtiwan.tarang.ui.LocalApp
@@ -192,49 +195,64 @@ fun AlbumScreen(id: String, preview: Album?) {
 @Composable
 fun ArtistScreen(id: String, preview: Artist?) {
     val app = LocalApp.current
+    val st by app.player.state.collectAsState()
+    val index by app.library.index.collectAsState()
     val artist = rememberLoad("artist:$id") {
         if (app.offline) OfflineLibrary.artist(app, id) ?: error("Artist not downloaded") else app.api?.getArtist(id) ?: error("Not connected")
     }
     val info = rememberLoad("artistinfo:$id") { if (app.offline) null else app.api?.getArtistInfo(id) }
     val top = rememberLoad("top:$id:${artist.value?.name}") { artist.value?.name?.let { if (app.offline) null else app.api?.getTopSongs(it) }.orEmpty() }
     var bioExpanded by remember { mutableStateOf(false) }
+    var editImage by remember { mutableStateOf(false) }
     var starred by remember(artist.value) { mutableStateOf(artist.value?.isStarred ?: preview?.isStarred ?: false) }
+    // Songs credited to this artist, including ones on albums filed under another album artist.
+    val credited = remember(index, id) { index.songs.filter { s -> s.artistId == id || s.artists.any { it.id == id } } }
     Column(Modifier.fillMaxSize()) {
         BackBar {
+            IconButton({ editImage = true }) { Icon(Icons.Rounded.AddPhotoAlternate, "Change artist image") }
             IconButton({
                 starred = !starred
                 app.launch { runCatching { if (starred) app.api?.star(artistId = id) else app.api?.unstar(artistId = id) } }
             }) { Icon(if (starred) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, "Favourite", tint = if (starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface) }
         }
         LoadContent(artist) { a ->
-            val albums = a.album.sortedByDescending { it.year ?: 0 }
+            val ownAlbums = a.album.sortedByDescending { it.year ?: 0 }
+            val appearsOn = remember(credited, ownAlbums) {
+                credited.filter { s -> ownAlbums.none { it.id == s.albumId } }.groupBy { it.albumId ?: it.album ?: "" }.map { (aid, list) ->
+                    val f = list.first()
+                    Album(id = f.albumId ?: aid, name = f.album ?: "", artist = f.displayAlbumArtist ?: f.artist, coverArt = f.coverArt, year = f.year, songCount = list.size)
+                }.sortedByDescending { it.year ?: 0 }
+            }
+            val topSongs = top.value.orEmpty().ifEmpty { credited.sortedByDescending { it.playCount ?: 0 }.take(10) }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
                 item {
-                    val img = info.value?.largeImageUrl?.takeIf { it.isNotBlank() }
-                    if (img != null) {
-                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                            AsyncImage(img, null, modifier = Modifier.size(220.dp).clip(CircleShape), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-                            Spacer(Modifier.height(12.dp))
-                            Text(a.name, style = MaterialTheme.typography.headlineSmall)
-                            Text("${albums.size} albums", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    } else {
-                        Header(a.coverArt, a.name, null, "${albums.size} albums", Icons.Rounded.Person, round = true)
+                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        ArtistImage(a.id, a.coverArt, Modifier.size(220.dp).clickable { editImage = true }, size = 800, shape = ArtistShape)
+                        Spacer(Modifier.height(16.dp))
+                        Text(a.name, style = MaterialTheme.typography.headlineMedium)
+                        Text(
+                            listOfNotNull(
+                                ownAlbums.size.takeIf { it > 0 }?.let { "$it albums" },
+                                credited.size.takeIf { it > 0 }?.let { "$it songs" },
+                            ).joinToString(" • ").ifBlank { "No albums" },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
                 item {
-                    Row(Modifier.fillMaxWidth().padding(16.dp, 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(16.dp, 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
                         Button({
                             app.launch {
-                                val songs = albums.flatMap { al -> runCatching { app.api?.getAlbum(al.id)?.song }.getOrNull() ?: al.song }
-                                if (songs.isNotEmpty()) app.player.play(songs.shuffled())
+                                val songs = ownAlbums.flatMap { al -> runCatching { app.api?.getAlbum(al.id)?.song }.getOrNull() ?: al.song } + credited
+                                val unique = songs.distinctBy { it.id }
+                                if (unique.isNotEmpty()) app.player.play(unique.shuffled())
                             }
                         }) { Icon(Icons.Rounded.Shuffle, null); Spacer(Modifier.width(6.dp)); Text("Shuffle") }
                         FilledTonalButton({
                             app.launch {
-                                val seed = top.value?.firstOrNull() ?: return@launch
+                                val seed = topSongs.firstOrNull() ?: return@launch
                                 val songs = runCatching { app.api?.getSimilarSongs(seed.id, 100) }.getOrNull().orEmpty()
-                                app.player.play(top.value.orEmpty().take(5) + songs)
+                                app.player.play(topSongs.take(5) + songs)
                             }
                         }) { Icon(Icons.Rounded.Radio, null); Spacer(Modifier.width(6.dp)); Text("Radio") }
                     }
@@ -253,17 +271,22 @@ fun ArtistScreen(id: String, preview: Artist?) {
                         TextButton({ bioExpanded = !bioExpanded }, Modifier.padding(start = 8.dp)) { Text(if (bioExpanded) "Less" else "More") }
                     }
                 }
-                val topSongs = top.value.orEmpty()
                 if (topSongs.isNotEmpty()) {
-                    item { SectionHeader("Top songs") }
-                    items(minOf(10, topSongs.size)) { i -> SongRow(topSongs[i], onClick = { app.player.play(topSongs, i) }) }
+                    item { SectionHeader(if (top.value.isNullOrEmpty()) "Songs" else "Top songs") }
+                    items(minOf(10, topSongs.size)) { i -> SongRow(topSongs[i], onClick = { app.player.play(topSongs, i) }, active = st.current?.id == topSongs[i].id) }
                 }
-                item { SectionHeader("Albums") }
-                items(albums.chunked(2)) { pair ->
-                    Row(Modifier.padding(horizontal = 12.dp)) {
-                        pair.forEach { AlbumCard(it, Modifier.weight(1f), width = null) }
-                        if (pair.size == 1) Box(Modifier.weight(1f))
+                if (ownAlbums.isNotEmpty()) {
+                    item { SectionHeader("Albums") }
+                    items(ownAlbums.chunked(2)) { pair ->
+                        Row(Modifier.padding(horizontal = 12.dp)) {
+                            pair.forEach { AlbumCard(it, Modifier.weight(1f), width = null) }
+                            if (pair.size == 1) Box(Modifier.weight(1f))
+                        }
                     }
+                }
+                if (appearsOn.isNotEmpty()) {
+                    item { SectionHeader("Appears on") }
+                    item { com.westtiwan.tarang.ui.AlbumRow(appearsOn) }
                 }
                 val similar = info.value?.similarArtist.orEmpty()
                 if (similar.isNotEmpty()) {
@@ -273,6 +296,7 @@ fun ArtistScreen(id: String, preview: Artist?) {
             }
         }
     }
+    if (editImage) artist.value?.let { ArtistImageDialog(it, info.value) { editImage = false } }
 }
 
 @Composable
