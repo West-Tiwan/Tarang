@@ -24,6 +24,10 @@ kotlin {
     }
 
     sourceSets {
+        all {
+            languageSettings.optIn("androidx.compose.material3.ExperimentalMaterial3Api")
+            languageSettings.optIn("androidx.compose.material3.ExperimentalMaterial3ExpressiveApi")
+        }
         commonMain.dependencies {
             api(libs.compose.runtime)
             api(libs.compose.foundation)
@@ -36,6 +40,7 @@ kotlin {
             implementation(libs.ktor.okhttp)
             api(libs.coil.compose)
             implementation(libs.coil.ktor)
+            implementation(libs.materialkolor)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

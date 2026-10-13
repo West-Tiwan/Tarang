@@ -259,6 +259,10 @@ data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val dynamicColor: Boolean = true,
     val pureBlack: Boolean = false,
+    /** Theme the player with colours from the album art. */
+    val albumArtColors: Boolean = true,
+    /** Use album art colours for the whole app instead of the wallpaper. */
+    val albumArtEverywhere: Boolean = false,
     val syncPlayQueue: Boolean = true,
     val syncEqToServer: Boolean = true,
     val offlineMode: Boolean = false,

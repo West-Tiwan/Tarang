@@ -27,8 +27,8 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.ShortNavigationBar
+import androidx.compose.material3.ShortNavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
@@ -105,9 +105,9 @@ fun Root() {
                 }
                 if (player.current != null) MiniPlayer()
                 if (!wide) {
-                    NavigationBar {
+                    ShortNavigationBar {
                         Tab.entries.forEach { t ->
-                            NavigationBarItem(selected = nav.tab == t, onClick = { nav.select(t) }, icon = { Icon(t.icon(), null) }, label = { Text(t.label) })
+                            ShortNavigationBarItem(selected = nav.tab == t, onClick = { nav.select(t) }, icon = { Icon(t.icon(), null) }, label = { Text(t.label) })
                         }
                     }
                 }
@@ -121,8 +121,9 @@ fun Root() {
             }
             if (toast != null) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.inverseSurface,
+                    shadowElevation = 6.dp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 150.dp, start = 24.dp, end = 24.dp),
                 ) {
                     Text(toast, color = MaterialTheme.colorScheme.inverseOnSurface, modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))

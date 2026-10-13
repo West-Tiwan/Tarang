@@ -122,7 +122,9 @@ fun SettingsScreen() {
 
         Group("Appearance")
         NavRow("Theme", s.theme.name.lowercase().replaceFirstChar { it.uppercase() }) { picker = Picker.THEME }
-        if (!platformUi.isDesktop) Pad { SettingSwitch("Wallpaper colours", "Android 12 and later", s.dynamicColor) { v -> app.updateSettings { it.copy(dynamicColor = v) } } }
+        if (!platformUi.isDesktop) Pad { SettingSwitch("Wallpaper colours", "Material You colours from your wallpaper, Android 12 and later", s.dynamicColor) { v -> app.updateSettings { it.copy(dynamicColor = v) } } }
+        Pad { SettingSwitch("Album art colours in the player", "The player picks up the colours of the current cover", s.albumArtColors) { v -> app.updateSettings { it.copy(albumArtColors = v) } } }
+        if (!platformUi.isDesktop) Pad { SettingSwitch("Album art colours everywhere", "Use the cover colours for the whole app instead of the wallpaper", s.albumArtEverywhere) { v -> app.updateSettings { it.copy(albumArtEverywhere = v) } } }
         Pad { SettingSwitch("Pure black", "For OLED screens", s.pureBlack) { v -> app.updateSettings { it.copy(pureBlack = v) } } }
 
         Group("Storage")

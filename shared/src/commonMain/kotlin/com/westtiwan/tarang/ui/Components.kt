@@ -53,7 +53,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -68,6 +67,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.SubcomposeAsyncImage
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.filterNotNull
 import com.westtiwan.tarang.data.Album
 import com.westtiwan.tarang.data.Artist
 import com.westtiwan.tarang.data.Playlist
@@ -112,6 +113,27 @@ fun CoverArt(
                 error = { Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.fillMaxSize(0.4f)) },
             )
         }
+    }
+}
+
+/** Artist picture, preferring an image the user picked over the server's. */
+@Composable
+fun ArtistImage(artistId: String?, coverArt: String?, modifier: Modifier = Modifier, size: Int = 300, shape: Shape = CircleShape) {
+    val app = LocalApp.current
+    val art by app.artistArt.state.collectAsState()
+    val override = artistId?.let { art.images[it] }
+    if (override == null) {
+        CoverArt(coverArt, modifier, size = size, shape = shape, icon = Icons.Rounded.Person)
+        return
+    }
+    Box(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+        SubcomposeAsyncImage(
+            model = override,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+            error = { CoverArt(coverArt, Modifier.fillMaxSize(), size = size, shape = shape, icon = Icons.Rounded.Person) },
+        )
     }
 }
 
@@ -167,7 +189,7 @@ fun SongRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showCover) {
-            CoverArt(song.coverArt, Modifier.size(48.dp), size = 120, shape = RoundedCornerShape(6.dp))
+            CoverArt(song.coverArt, Modifier.size(52.dp), size = 120, shape = RoundedCornerShape(14.dp))
             Spacer(Modifier.width(12.dp))
         } else if (trackNumber != null) {
             Text(
@@ -332,7 +354,7 @@ fun AddToPlaylistDialog(songs: List<Song>, onDismiss: () -> Unit) {
                         )
                         HorizontalDivider()
                     }
-                    is Load.Loading -> CircularProgressIndicator()
+                    is Load.Loading -> LoadingDots()
                     is Load.Err -> Text(s.message)
                 }
             }
@@ -345,11 +367,11 @@ fun AlbumCard(album: Album, modifier: Modifier = Modifier, width: Dp? = 150.dp) 
     val nav = LocalNav.current
     Column(
         (if (width != null) modifier.width(width) else modifier)
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(24.dp))
             .clickable { nav.push(Screen.AlbumDetail(album.id, album)) }
             .padding(4.dp),
     ) {
-        CoverArt(album.coverArt, Modifier.fillMaxWidth().aspectRatio(1f), size = 400, shape = RoundedCornerShape(10.dp), icon = Icons.Rounded.Album)
+        CoverArt(album.coverArt, Modifier.fillMaxWidth().aspectRatio(1f), size = 400, shape = CoverShape, icon = Icons.Rounded.Album)
         Spacer(Modifier.height(6.dp))
         Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
         Text(
@@ -376,7 +398,7 @@ fun ArtistCircle(artist: Artist, modifier: Modifier = Modifier) {
         modifier.width(110.dp).clip(RoundedCornerShape(12.dp)).clickable { nav.push(Screen.ArtistDetail(artist.id, artist)) }.padding(6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CoverArt(artist.coverArt, Modifier.size(96.dp), size = 300, shape = CircleShape, icon = Icons.Rounded.Person)
+        ArtistImage(artist.id, artist.coverArt, Modifier.size(96.dp), size = 300, shape = ArtistShape)
         Spacer(Modifier.height(6.dp))
         Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
     }
@@ -389,7 +411,7 @@ fun ArtistRow(artist: Artist) {
         Modifier.fillMaxWidth().clickable { nav.push(Screen.ArtistDetail(artist.id, artist)) }.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CoverArt(artist.coverArt, Modifier.size(48.dp), size = 120, shape = CircleShape, icon = Icons.Rounded.Person)
+        ArtistImage(artist.id, artist.coverArt, Modifier.size(48.dp), size = 120, shape = ArtistShape)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(artist.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -406,7 +428,7 @@ fun PlaylistRow(pl: Playlist) {
         Modifier.fillMaxWidth().clickable { nav.push(Screen.PlaylistDetail(pl.id, pl)) }.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CoverArt(pl.coverArt, Modifier.size(52.dp), size = 150, icon = Icons.AutoMirrored.Rounded.QueueMusic)
+        CoverArt(pl.coverArt, Modifier.size(56.dp), size = 150, shape = RoundedCornerShape(16.dp), icon = Icons.AutoMirrored.Rounded.QueueMusic)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(pl.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -432,7 +454,12 @@ fun CenteredMessage(text: String, modifier: Modifier = Modifier, action: String?
 
 @Composable
 fun Loading(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+    Box(modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) { androidx.compose.material3.LoadingIndicator() }
+}
+
+@Composable
+fun LoadingDots(modifier: Modifier = Modifier) {
+    androidx.compose.material3.LoadingIndicator(modifier.size(36.dp))
 }
 
 /** Renders a [Loader] state with loading and error handling. */
@@ -457,13 +484,10 @@ fun ChoiceRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
 @Composable
 fun rememberToastHost(): String? {
     val app = LocalApp.current
-    val msg by app.toast.collectAsState()
     var shown by remember { mutableStateOf<String?>(null) }
-    var tick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(msg) {
-        if (msg != null) {
+    LaunchedEffect(Unit) {
+        app.toast.filterNotNull().collectLatest { msg ->
             shown = msg
-            tick++
             app.toast(null)
             kotlinx.coroutines.delay(2500)
             shown = null

@@ -1,6 +1,14 @@
 package com.westtiwan.tarang.ui.screens
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalFloatingToolbar
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -96,43 +104,75 @@ fun MiniPlayer() {
     val nav = LocalNav.current
     val st by app.player.state.collectAsState()
     val song = st.current ?: return
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-        Column {
-            LinearProgressIndicator(
-                progress = { if (st.durationMs > 0) (st.positionMs.toFloat() / st.durationMs).coerceIn(0f, 1f) else 0f },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                drawStopIndicator = {},
-            )
-            Row(
-                Modifier.fillMaxWidth().clickable { nav.nowPlayingPage = NowPlayingPage.ART; nav.nowPlayingOpen = true }
-                    .pointerInput(Unit) {
-                        var total = 0f
-                        detectHorizontalDragGestures(onDragEnd = {
-                            if (total < -120) app.player.next() else if (total > 120) app.player.previous()
-                            total = 0f
-                        }) { _, d -> total += d }
-                    }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                CoverArt(song.coverArt, Modifier.size(44.dp), size = 120, shape = RoundedCornerShape(6.dp))
+    val progress = if (st.durationMs > 0) (st.positionMs.toFloat() / st.durationMs).coerceIn(0f, 1f) else 0f
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Column(
+            Modifier.clickable { nav.nowPlayingPage = NowPlayingPage.ART; nav.nowPlayingOpen = true }
+                .pointerInput(Unit) {
+                    var total = 0f
+                    detectHorizontalDragGestures(onDragEnd = {
+                        if (total < -120) app.player.next() else if (total > 120) app.player.previous()
+                        total = 0f
+                    }) { _, d -> total += d }
+                },
+        ) {
+            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 4.dp, top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                CoverArt(song.coverArt, Modifier.size(48.dp), size = 120, shape = RoundedCornerShape(16.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                     Text(song.artist ?: "", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton({ app.toggleStar(song) }) {
                     Icon(if (song.isStarred) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null, tint = if (song.isStarred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton({ app.player.toggle() }) { Icon(if (st.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, Modifier.size(32.dp)) }
+                PlayPauseButton(st.playing, small = true) { app.player.toggle() }
                 IconButton({ app.player.next() }, enabled = st.hasNext) { Icon(Icons.Rounded.SkipNext, null) }
             }
+            WavyProgress(progress, st.playing, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 10.dp))
         }
+    }
+}
+
+/** Squiggly while playing, flat while paused, like Android's own media controls. */
+@Composable
+fun WavyProgress(progress: Float, playing: Boolean, modifier: Modifier = Modifier) {
+    if (playing) LinearWavyProgressIndicator(progress = { progress }, modifier = modifier)
+    else LinearProgressIndicator(progress = { progress }, modifier = modifier)
+}
+
+/** Play button that morphs from a circle to a rounded square while playing. */
+@Composable
+fun PlayPauseButton(playing: Boolean, small: Boolean = false, onClick: () -> Unit) {
+    val corner by animateIntAsState(if (playing) 30 else 50, MaterialTheme.motionScheme.fastSpatialSpec(), label = "corner")
+    val width by animateDpAsState(if (small) (if (playing) 52.dp else 44.dp) else (if (playing) 104.dp else 84.dp), MaterialTheme.motionScheme.fastSpatialSpec(), label = "width")
+    FilledIconButton(
+        onClick,
+        Modifier.size(width = width, height = if (small) 44.dp else 84.dp),
+        shape = RoundedCornerShape(percent = corner),
+    ) {
+        Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", Modifier.size(if (small) 26.dp else 44.dp))
     }
 }
 
 @Composable
 fun NowPlaying() {
+    val app = LocalApp.current
+    val settings by app.settings.collectAsState()
+    val st by app.player.state.collectAsState()
+    val seed = if (settings.albumArtColors) com.westtiwan.tarang.ui.rememberSeedColor(st.current?.coverArt) else null
+    com.westtiwan.tarang.ui.TarangTheme(settings.theme, settings.dynamicColor, settings.pureBlack, seed) {
+        NowPlayingContent()
+    }
+}
+
+@Composable
+private fun NowPlayingContent() {
     val app = LocalApp.current
     val nav = LocalNav.current
     val st by app.player.state.collectAsState()
@@ -161,7 +201,7 @@ fun NowPlaying() {
                     Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
                         TopRow(st)
                         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                            CoverArt(song.coverArt, Modifier.fillMaxHeight(0.9f).aspectRatio(1f), size = 1000, shape = RoundedCornerShape(16.dp))
+                            CoverArt(song.coverArt, Modifier.fillMaxHeight(0.9f).aspectRatio(1f), size = 1000, shape = RoundedCornerShape(32.dp))
                         }
                         Controls(st)
                     }
@@ -189,7 +229,12 @@ fun NowPlaying() {
                                     },
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    CoverArt(song.coverArt, Modifier.widthIn(max = 520.dp).fillMaxWidth().aspectRatio(1f), size = 1000, shape = RoundedCornerShape(16.dp))
+                                    val scale by animateFloatAsState(if (st.playing) 1f else 0.86f, MaterialTheme.motionScheme.defaultSpatialSpec(), label = "cover")
+                                    CoverArt(
+                                        song.coverArt,
+                                        Modifier.widthIn(max = 520.dp).fillMaxWidth().aspectRatio(1f).graphicsLayer { scaleX = scale; scaleY = scale },
+                                        size = 1000, shape = RoundedCornerShape(32.dp),
+                                    )
                                 }
                                 NowPlayingPage.LYRICS -> LyricsPanel(song)
                                 NowPlayingPage.QUEUE -> QueuePanel(compact = false)
@@ -252,23 +297,59 @@ private fun TopRow(st: PlayerState) {
 
 @Composable
 fun AudioPipelineDialog(a: AudioInfo, onDismiss: () -> Unit) {
+    val desktop = com.westtiwan.tarang.ui.LocalPlatformUi.current.isDesktop
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onDismiss) { Text("Close") } },
         title = { Text("Signal path") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                a.source?.let { Text("Source: $it") }
-                Text("Decoded: " + listOfNotNull(a.codec?.uppercase(), a.bitDepth?.let { "$it-bit" }, a.sampleRate?.let { "$it Hz" }, a.channels?.let { "${it}ch" }, a.bitrate?.let { "${it / 1000} kbps" }).joinToString(", "))
-                a.pipeline.forEach { Text("→ $it") }
-                a.output?.let { Text("Output: $it" + (a.outputRate?.let { r -> " at $r Hz" } ?: "")) }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("How this song gets from the file to your ears.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                PathStep("File", listOfNotNull(
+                    a.codec?.uppercase(), a.bitDepth?.let { "$it-bit" }, a.sampleRate?.let { "${formatKhz(it)} kHz" },
+                    a.channels?.let { if (it == 2) "stereo" else "$it channels" }, a.bitrate?.let { "${it / 1000} kbps" },
+                ).joinToString(", ") + (a.source?.let { "\n$it" } ?: ""))
+                a.pipeline.forEach { step ->
+                    val (title, detail) = when {
+                        step.startsWith("Decoder") -> "Decode" to step.substringAfter(": ").let { "$it turns the compressed file back into raw audio samples" }
+                        step.startsWith("EQ:") -> "Equalizer" to step.substringAfter(": ")
+                        step.startsWith("EQ bypassed") -> "Equalizer" to "Bypassed to keep the signal untouched"
+                        step.startsWith("Replay gain") -> "Volume levelling" to step
+                        step.startsWith("Java Sound") || step.startsWith("AudioTrack") -> "Hand off to the system" to step
+                        step.startsWith("Bit-perfect") -> "Mixer" to "Dedicated bit-perfect mixer, nothing else mixed in"
+                        step.startsWith("Android mixer") -> "Mixer" to "Android mixes this with other sounds and may resample it"
+                        else -> "Step" to step
+                    }
+                    PathStep(title, detail)
+                }
+                if (desktop) PathStep("Mixer", "macOS Core Audio mixes this with other apps")
+                a.output?.let { PathStep("Output", it + (a.outputRate?.let { r -> " at ${formatKhz(r)} kHz" } ?: "")) }
+                val sameRate = a.outputRate != null && a.outputRate == a.sampleRate
                 Text(
-                    if (a.bitPerfect) "Bit-perfect: samples reach the DAC unchanged." else "Not bit-perfect: the system mixer or effects touch the signal.",
+                    when {
+                        a.bitPerfect -> "Bit-perfect: the DAC receives exactly the samples in the file."
+                        sameRate && a.pipeline.none { it.startsWith("EQ:") || it.startsWith("Replay") } ->
+                            "Not resampled or processed by Tarang, but the system mixer is still in the path, so it is not guaranteed bit-perfect."
+                        else -> "Processed: the EQ, volume levelling or resampling changes the samples."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
                     color = if (a.bitPerfect) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         },
     )
+}
+
+@Composable
+private fun PathStep(title: String, detail: String) {
+    Row {
+        Box(Modifier.padding(top = 6.dp).size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(detail, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
 }
 
 @Composable
@@ -314,12 +395,17 @@ private fun Controls(st: PlayerState) {
             }
         }
         val duration = st.durationMs.takeIf { it > 0 } ?: song.durationMs
-        Slider(
-            value = if (dragging) dragValue else if (duration > 0) (st.positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f,
-            onValueChange = { dragging = true; dragValue = it },
-            onValueChangeFinished = { app.player.seekTo((dragValue * duration).toLong()); dragging = false },
-            modifier = Modifier.fillMaxWidth(),
-        )
+        val value = if (dragging) dragValue else if (duration > 0) (st.positionMs.toFloat() / duration).coerceIn(0f, 1f) else 0f
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            WavyProgress(value, st.playing && !dragging, Modifier.fillMaxWidth().padding(horizontal = 10.dp))
+            Slider(
+                value = value,
+                onValueChange = { dragging = true; dragValue = it },
+                onValueChangeFinished = { app.player.seekTo((dragValue * duration).toLong()); dragging = false },
+                colors = SliderDefaults.colors(activeTrackColor = Color.Transparent, inactiveTrackColor = Color.Transparent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Row(Modifier.fillMaxWidth()) {
             Text(formatDuration(if (dragging) (dragValue * duration).toLong() else st.positionMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.weight(1f))
@@ -329,11 +415,9 @@ private fun Controls(st: PlayerState) {
             IconButton({ app.player.setShuffle(!st.shuffle) }) {
                 Icon(Icons.Rounded.Shuffle, "Shuffle", tint = if (st.shuffle) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton({ app.player.previous() }, Modifier.size(56.dp)) { Icon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(40.dp)) }
-            FilledIconButton({ app.player.toggle() }, Modifier.size(76.dp), colors = IconButtonDefaults.filledIconButtonColors()) {
-                Icon(if (st.playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, "Play", Modifier.size(44.dp))
-            }
-            IconButton({ app.player.next() }, Modifier.size(56.dp), enabled = st.hasNext) { Icon(Icons.Rounded.SkipNext, "Next", Modifier.size(40.dp)) }
+            FilledTonalIconButton({ app.player.previous() }, Modifier.size(64.dp), shape = RoundedCornerShape(22.dp)) { Icon(Icons.Rounded.SkipPrevious, "Previous", Modifier.size(32.dp)) }
+            PlayPauseButton(st.playing) { app.player.toggle() }
+            FilledTonalIconButton({ app.player.next() }, Modifier.size(64.dp), shape = RoundedCornerShape(22.dp), enabled = st.hasNext) { Icon(Icons.Rounded.SkipNext, "Next", Modifier.size(32.dp)) }
             IconButton({
                 app.player.setRepeat(when (st.repeat) { RepeatMode.OFF -> RepeatMode.ALL; RepeatMode.ALL -> RepeatMode.ONE; RepeatMode.ONE -> RepeatMode.OFF })
             }) {
@@ -352,7 +436,7 @@ private fun BottomActions() {
     var sleep by remember { mutableStateOf(false) }
     var speed by remember { mutableStateOf(false) }
     var output by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+    Box(Modifier.fillMaxWidth().padding(bottom = 12.dp), contentAlignment = Alignment.Center) { HorizontalFloatingToolbar(expanded = true) {
         IconButton({ nav.nowPlayingPage = if (nav.nowPlayingPage == NowPlayingPage.LYRICS) NowPlayingPage.ART else NowPlayingPage.LYRICS }) {
             Icon(Icons.Rounded.Lyrics, "Lyrics", tint = if (nav.nowPlayingPage == NowPlayingPage.LYRICS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
@@ -365,7 +449,7 @@ private fun BottomActions() {
         IconButton({ sleep = true }) {
             Icon(Icons.Rounded.Bedtime, "Sleep timer", tint = if (app.coordinator?.sleepAtMs != null || app.coordinator?.sleepAfterCurrent == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
         }
-    }
+    } }
     if (sleep) SleepDialog { sleep = false }
     if (speed) SpeedDialog { speed = false }
     if (output) OutputDialog { output = false }
