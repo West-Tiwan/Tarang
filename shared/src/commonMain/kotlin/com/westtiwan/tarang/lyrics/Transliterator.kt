@@ -108,21 +108,33 @@ object Hinglish {
         }
     }
 
+    private val gluedParticles = setOf("て", "で", "ば", "たり", "だり", "ちゃ", "じゃ", "つつ", "ながら")
+
     private fun japaneseToRomaji(text: String): String {
         val tokens = japaneseReadings(text) ?: return Kana.toRomaji(text)
-        val sb = StringBuilder()
+        // Group morphemes into words first, so a trailing っ doubles the next consonant (makkura,
+        // omotta) and conjugation pieces stay on their verb (haite, ikimasu).
+        val words = ArrayList<StringBuilder>()
+        var prev = ""
         for (t in tokens) {
-            val roman = when {
-                t.particle && t.surface == "は" -> "wa"
-                t.particle && t.surface == "へ" -> "e"
-                t.particle && t.surface == "を" -> "o"
-                else -> Kana.toRomaji(t.reading ?: t.surface)
+            val reading = when {
+                t.particle && t.surface == "は" -> "ワ"
+                t.particle && t.surface == "へ" -> "エ"
+                t.particle && t.surface == "を" -> "オ"
+                else -> t.reading ?: t.surface
             }
-            val punctuation = roman.isNotEmpty() && roman.none { it.isLetterOrDigit() }
-            if (sb.isNotEmpty() && !t.attach && !punctuation && !sb.last().isWhitespace()) sb.append(' ')
-            sb.append(roman)
+            if (reading.isBlank()) continue
+            val punctuation = reading.none { it.isLetterOrDigit() }
+            val glue = words.isNotEmpty() && !punctuation && prev.isNotEmpty() && (
+                t.attach || prev.endsWith("ッ") || prev.endsWith("っ") || (t.particle && t.surface in gluedParticles)
+            )
+            if (glue) words.last().append(reading) else words.add(StringBuilder(reading))
+            prev = if (punctuation) "" else reading
         }
-        return sb.toString().replace(Regex(" +"), " ").trim()
+        return words.joinToString(" ") { Kana.toRomaji(it.toString()) }
+            .replace(Regex(" +([,.!?~])"), "$1")
+            .replace(Regex(" +"), " ")
+            .trim()
     }
 
     /** Gurmukhi mirrors the Devanagari block layout 0x100 lower, apart from a few signs handled here. */

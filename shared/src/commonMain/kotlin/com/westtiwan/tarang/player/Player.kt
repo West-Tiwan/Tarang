@@ -66,4 +66,6 @@ interface PlayerController {
     fun refreshAudio()
     /** Replaces queue metadata after a star or rating change without interrupting playback. */
     fun updateSong(song: Song)
+    /** Removes the streaming cache for one song so it is fetched fresh next time. */
+    fun clearAudioCache(songId: String) {}
 }

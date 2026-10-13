@@ -161,6 +161,8 @@ class LyricsService(
 /** Translates lyric lines. Implementations: on device ML Kit on Android, LibreTranslate anywhere. */
 interface Translator {
     val name: String
+    /** True when the engine benefits from seeing the whole song at once. */
+    val contextual: Boolean get() = false
     suspend fun translate(lines: List<String>, sourceLang: String?, targetLang: String): List<String>
 }
 
@@ -227,7 +229,7 @@ class LyricsProcessor {
         // Translate in chunks, keeping blank lines aligned.
         val nonBlank = input.withIndex().filter { it.value.isNotBlank() }
         val result = Array(texts.size) { "" }
-        nonBlank.chunked(40).forEach { chunk ->
+        nonBlank.chunked(if (translator.contextual) 400 else 40).forEach { chunk ->
             val out = translator.translate(chunk.map { it.value }, source, target)
             chunk.forEachIndexed { i, iv -> result[iv.index] = out.getOrElse(i) { "" } }
         }

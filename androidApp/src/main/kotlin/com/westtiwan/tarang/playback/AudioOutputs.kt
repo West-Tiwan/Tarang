@@ -24,6 +24,7 @@ object AudioBus {
     val bitPerfectSupported = MutableStateFlow(false)
     @Volatile var onSelectOutput: ((String?) -> Unit)? = null
     @Volatile var onRefreshAudio: (() -> Unit)? = null
+    @Volatile var onClearAudioCache: ((String) -> Unit)? = null
 }
 
 /**

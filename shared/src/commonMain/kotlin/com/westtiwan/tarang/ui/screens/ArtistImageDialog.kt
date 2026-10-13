@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Upload
@@ -45,6 +46,7 @@ import com.westtiwan.tarang.data.ArtistInfo
 import com.westtiwan.tarang.ui.LocalApp
 import com.westtiwan.tarang.ui.LocalPlatformUi
 import com.westtiwan.tarang.ui.LoadingDots
+import com.westtiwan.tarang.ui.clearImageCache
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -53,6 +55,7 @@ fun ArtistImageDialog(artist: Artist, info: ArtistInfo?, onDismiss: () -> Unit) 
     val app = LocalApp.current
     val platform = LocalPlatformUi.current
     val scope = rememberCoroutineScope()
+    val context = coil3.compose.LocalPlatformContext.current
     var query by remember { mutableStateOf(artist.name) }
     var results by remember { mutableStateOf<List<ArtCandidate>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
@@ -85,6 +88,11 @@ fun ArtistImageDialog(artist: Artist, info: ArtistInfo?, onDismiss: () -> Unit) 
                     OutlinedButton({ app.artistArt.reset(artist.id); onDismiss() }) {
                         Icon(Icons.Rounded.Restore, null); Spacer(Modifier.width(6.dp)); Text("Server image")
                     }
+                    OutlinedButton({
+                        clearImageCache(context, app, artist.coverArt, listOfNotNull(app.artistArt.imageFor(artist.id), info?.largeImageUrl, info?.mediumImageUrl))
+                        app.toast("Image cache cleared")
+                        onDismiss()
+                    }) { Icon(Icons.Rounded.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Reload") }
                 }
                 OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
                     label = { Text("Search Deezer and TheAudioDB") }, modifier = Modifier.fillMaxWidth())

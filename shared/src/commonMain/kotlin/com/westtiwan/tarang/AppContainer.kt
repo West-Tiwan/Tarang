@@ -107,13 +107,30 @@ class AppContainer(
     val online: StateFlow<Boolean> = _online
     val offline: Boolean get() = settings.value.offlineMode || !_online.value
 
+    /** Bumped when cover caches are cleared so images reload. */
+    val coverEpoch = MutableStateFlow(0)
+    /** Bumped when lyrics or translation caches are cleared so the lyrics view reloads. */
+    val lyricsEpoch = MutableStateFlow(0)
+
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast
     fun toast(msg: String?) { _toast.value = msg }
 
-    fun translator(): Translator? {
+    val translations = com.westtiwan.tarang.lyrics.TranslationCache(joinPath(Platform.cacheDir(), "translations"))
+
+    /** The chosen engine first, then Google, then the on-device translator as fallbacks. */
+    fun translator(): com.westtiwan.tarang.lyrics.FallbackTranslator {
         val s = settings.value
-        return if (s.libreTranslateUrl.isNotBlank()) LibreTranslator(http, s.libreTranslateUrl, s.libreTranslateKey) else platformTranslator
+        val google = com.westtiwan.tarang.lyrics.GoogleTranslator(http)
+        val chosen: Translator? = when (s.translateEngine) {
+            "gemini" -> s.geminiKey.takeIf { it.isNotBlank() }?.let { com.westtiwan.tarang.lyrics.GeminiTranslator(http, it, s.geminiModel) }
+            "deepl" -> s.deeplKey.takeIf { it.isNotBlank() }?.let { com.westtiwan.tarang.lyrics.DeepLTranslator(http, it) }
+            "openai" -> s.openAiUrl.takeIf { it.isNotBlank() && s.openAiModel.isNotBlank() }?.let { com.westtiwan.tarang.lyrics.OpenAiTranslator(http, it, s.openAiKey, s.openAiModel) }
+            "libre" -> s.libreTranslateUrl.takeIf { it.isNotBlank() }?.let { LibreTranslator(http, it, s.libreTranslateKey) }
+            "device" -> platformTranslator
+            else -> google
+        }
+        return com.westtiwan.tarang.lyrics.FallbackTranslator(listOfNotNull(chosen, google.takeIf { chosen !== it }, platformTranslator.takeIf { chosen !== it }))
     }
 
     fun updateSettings(f: (AppSettings) -> AppSettings) = settingsStore.update(f)

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -158,8 +159,15 @@ fun AlbumScreen(id: String, preview: Album?) {
         if (app.offline) OfflineLibrary.album(app, id) ?: error("Album not downloaded") else app.api?.getAlbum(id) ?: error("Not connected")
     }
     var starred by remember(album.value) { mutableStateOf(album.value?.isStarred ?: preview?.isStarred ?: false) }
+    val context = coil3.compose.LocalPlatformContext.current
     Column(Modifier.fillMaxSize()) {
         BackBar {
+            IconButton({
+                val a = album.value ?: preview
+                com.westtiwan.tarang.ui.clearImageCache(context, app, a?.coverArt)
+                a?.song?.forEach { s -> if (s.coverArt != a.coverArt) com.westtiwan.tarang.ui.clearImageCache(context, app, s.coverArt) }
+                app.toast("Cover reloaded")
+            }) { Icon(Icons.Rounded.Refresh, "Reload cover") }
             IconButton({
                 starred = !starred
                 app.launch { runCatching { if (starred) app.api?.star(albumId = id) else app.api?.unstar(albumId = id) }; MemCache.invalidate("home:") }

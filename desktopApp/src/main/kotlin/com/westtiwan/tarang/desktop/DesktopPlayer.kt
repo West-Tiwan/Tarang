@@ -265,6 +265,11 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
 
     override fun refreshAudio() = configureEq(lineFormat?.sampleRate?.toInt(), lineFormat?.channels)
 
+    override fun clearAudioCache(songId: String) {
+        tracks.remove(songId)?.cancelled = true
+        cacheDir.listFiles()?.filter { it.name.startsWith("$songId.") }?.forEach { it.delete() }
+    }
+
     override fun updateSong(song: Song) {
         queue = queue.map { if (it.id == song.id) song else it }
         publish()

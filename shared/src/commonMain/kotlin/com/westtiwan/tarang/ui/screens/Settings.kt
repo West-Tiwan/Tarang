@@ -96,15 +96,32 @@ fun SettingsScreen() {
         Pad { SettingSwitch("Always show translation", null, s.showTranslation) { v -> app.updateSettings { it.copy(showTranslation = v) } } }
         Pad { SettingSwitch("Search LRCLIB when the server has none", null, "lrclib" in s.lyricsSources) { v -> app.updateSettings { it.copy(lyricsSources = if (v) listOf("server", "lrclib") else listOf("server")) } } }
         NavRow("Translate to", languages.firstOrNull { it.first == s.translateTarget }?.second ?: s.translateTarget) { picker = Picker.LANGUAGE }
+        NavRow("Translation engine", engineLabel(s.translateEngine)) { picker = Picker.ENGINE }
         Pad {
-            Text(
-                if (platformUi.isDesktop) "Translation uses a LibreTranslate server. You can self-host one next to Navidrome."
-                else "Translation runs on device with Google ML Kit (the language model downloads once). Set a LibreTranslate server to use that instead.",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            OutlinedTextField(s.libreTranslateUrl, { v -> app.updateSettings { it.copy(libreTranslateUrl = v.trim()) } }, label = { Text("LibreTranslate URL (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(s.libreTranslateKey, { v -> app.updateSettings { it.copy(libreTranslateKey = v.trim()) } }, label = { Text("API key (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation())
+            when (s.translateEngine) {
+                "gemini" -> {
+                    Text("Best for lyrics: reads the whole song and translates with the mood in mind. Free API key from aistudio.google.com.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(s.geminiKey, { v -> app.updateSettings { it.copy(geminiKey = v.trim()) } }, label = { Text("Gemini API key") }, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+                    OutlinedTextField(s.geminiModel, { v -> app.updateSettings { it.copy(geminiModel = v.trim()) } }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                }
+                "deepl" -> {
+                    Text("Free DeepL API key gives 500,000 characters a month.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(s.deeplKey, { v -> app.updateSettings { it.copy(deeplKey = v.trim()) } }, label = { Text("DeepL API key") }, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+                }
+                "openai" -> {
+                    Text("Any OpenAI compatible server, for example Ollama (http://westylabs:11434/v1), OpenRouter or Groq.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(s.openAiUrl, { v -> app.updateSettings { it.copy(openAiUrl = v.trim()) } }, label = { Text("Base URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(s.openAiModel, { v -> app.updateSettings { it.copy(openAiModel = v.trim()) } }, label = { Text("Model") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(s.openAiKey, { v -> app.updateSettings { it.copy(openAiKey = v.trim()) } }, label = { Text("API key (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+                }
+                "libre" -> {
+                    Text("Self-hosted and private, but weaker for Japanese and Korean.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(s.libreTranslateUrl, { v -> app.updateSettings { it.copy(libreTranslateUrl = v.trim()) } }, label = { Text("LibreTranslate URL") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(s.libreTranslateKey, { v -> app.updateSettings { it.copy(libreTranslateKey = v.trim()) } }, label = { Text("API key (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+                }
+                "device" -> Text("Google ML Kit on the phone. Works offline once the language is downloaded, lower quality.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> Text("Free, no setup. The whole song is sent at once so lines get context.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
 
         Group("Scrobbling")
@@ -171,6 +188,12 @@ fun SettingsScreen() {
         Picker.LANGUAGE -> ListDialog("Translate to", languages.map { it.second }, languages.indexOfFirst { it.first == s.translateTarget }, { picker = null }) { i ->
             app.updateSettings { it.copy(translateTarget = languages[i].first) }
         }
+        Picker.ENGINE -> {
+            val engines = listOfNotNull("google", "gemini", "deepl", "openai", "libre", "device".takeIf { !platformUi.isDesktop })
+            ListDialog("Translation engine", engines.map { engineLabel(it) }, engines.indexOf(s.translateEngine), { picker = null }) { i ->
+                app.updateSettings { it.copy(translateEngine = engines[i]) }
+            }
+        }
         Picker.THEME -> ListDialog("Theme", ThemeMode.entries.map { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } }, s.theme.ordinal, { picker = null }) { i ->
             app.updateSettings { it.copy(theme = ThemeMode.entries[i]) }
         }
@@ -178,7 +201,7 @@ fun SettingsScreen() {
     }
 }
 
-private enum class Picker { WIFI, MOBILE, DOWNLOAD, REPLAY_GAIN, LANGUAGE, THEME }
+private enum class Picker { WIFI, MOBILE, DOWNLOAD, REPLAY_GAIN, LANGUAGE, THEME, ENGINE }
 
 @Composable
 private fun Group(title: String) {

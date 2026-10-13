@@ -94,6 +94,12 @@ class PlaybackService : MediaLibraryService() {
             player.setPreferredAudioDevice(dev)
         }
         AudioBus.onRefreshAudio = { scope.launch { applyAudio() } }
+        AudioBus.onClearAudioCache = { songId ->
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val c = cache(this@PlaybackService, app.settings.value.cacheSizeMb)
+                c.keys.filter { it.startsWith("$songId:") }.forEach { runCatching { c.removeResource(it) } }
+            }
+        }
 
         scope.launch {
             app.settings.map { it.bitPerfect }.distinctUntilChanged().drop(1).collect { bp ->
@@ -266,6 +272,7 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         AudioBus.onSelectOutput = null
         AudioBus.onRefreshAudio = null
+        AudioBus.onClearAudioCache = null
         outputs.stop()
         session.release()
         player.release()

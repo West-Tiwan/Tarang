@@ -185,6 +185,7 @@ class AndroidPlayer(private val context: Context, private val app: AppContainer)
     override fun setVolume(volume: Float) = withController { it.volume = volume }
     override fun selectOutput(key: String?) { AudioBus.onSelectOutput?.invoke(key) }
     override fun refreshAudio() { AudioBus.onRefreshAudio?.invoke() }
+    override fun clearAudioCache(songId: String) { AudioBus.onClearAudioCache?.invoke(songId) }
 
     override fun updateSong(song: Song) {
         SongRegistry.put(song)

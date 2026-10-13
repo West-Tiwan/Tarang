@@ -29,6 +29,9 @@ class LyricsTest {
 
     @Test fun kana() {
         assertEquals("kimi no na wa", Hinglish.romanize("君の名は"))
+        assertTrue(Hinglish.romanize("確かなことは、まっくらの中").contains("makkura"))
+        assertTrue(Hinglish.romanize("やっと綺麗だって思った").endsWith("omotta"))
+        assertTrue(Hinglish.romanize("少し大きめの苦痛を履いて").endsWith("haite"))
         assertEquals("arigatou", Kana.toRomaji("ありがとう"))
         assertEquals("kitto", Kana.toRomaji("きっと"))
         assertEquals("ko-hi-".replace("-", ""), Kana.toRomaji("こひ"))

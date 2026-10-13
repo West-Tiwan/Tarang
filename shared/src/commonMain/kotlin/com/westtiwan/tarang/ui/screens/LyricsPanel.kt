@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.TextDecrease
 import androidx.compose.material.icons.rounded.TextIncrease
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -51,14 +52,19 @@ fun LyricsPanel(song: Song) {
     val app = LocalApp.current
     val settings by app.settings.collectAsState()
     val st by app.player.state.collectAsState()
-    var doc by remember(song.id) { mutableStateOf<LyricsDoc?>(app.lyrics.cached(song)) }
-    var loading by remember(song.id) { mutableStateOf(doc == null) }
+    val lyricsEpoch by app.lyricsEpoch.collectAsState()
+    var doc by remember(song.id, lyricsEpoch) { mutableStateOf<LyricsDoc?>(app.lyrics.cached(song)) }
+    var loading by remember(song.id, lyricsEpoch) { mutableStateOf(doc == null) }
     var reloadTick by remember { mutableIntStateOf(0) }
-    var translated by remember(song.id) { mutableStateOf<List<String>?>(MemCache.get("tr:${song.id}:${settings.translateTarget}")) }
+    var translated by remember(song.id, settings.translateEngine, settings.translateTarget, lyricsEpoch) {
+        mutableStateOf(app.translations.get(song.id, settings.translateEngine, settings.translateTarget))
+    }
+    var translatedBy by remember(song.id) { mutableStateOf<String?>(null) }
+    var retranslate by remember(song.id) { mutableIntStateOf(0) }
     var translating by remember(song.id) { mutableStateOf(false) }
     var translateError by remember(song.id) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(song.id, reloadTick) {
+    LaunchedEffect(song.id, reloadTick, lyricsEpoch) {
         if (doc != null && reloadTick == 0) { loading = false; return@LaunchedEffect }
         loading = true
         doc = app.lyrics.load(song, if (app.offline) null else app.api, settings.lyricsSources, force = reloadTick > 0)
@@ -88,17 +94,18 @@ fun LyricsPanel(song: Song) {
     var showTranslation by remember(song.id, foreign) { mutableStateOf(settings.showTranslation || (settings.autoTranslateForeign && (foreign || hinglish))) }
     val fontScale = settings.lyricsFontScale
 
-    LaunchedEffect(showTranslation, song.id, settings.translateTarget) {
-        if (!showTranslation || translated != null || translating) return@LaunchedEffect
+    LaunchedEffect(showTranslation, song.id, settings.translateTarget, settings.translateEngine, retranslate, lyricsEpoch) {
+        if (!showTranslation || translating) return@LaunchedEffect
+        if (translated != null && retranslate == 0) return@LaunchedEffect
         val tr = app.translator()
-        if (tr == null) {
-            translateError = "Set a LibreTranslate server in Settings to translate on this device"
-            return@LaunchedEffect
-        }
         translating = true
         translateError = null
         runCatching { app.lyricsProcessor.translate(current, tr, settings.translateTarget) }
-            .onSuccess { translated = it; MemCache.put("tr:${song.id}:${settings.translateTarget}", it) }
+            .onSuccess {
+                translated = it
+                translatedBy = tr.usedName
+                app.translations.put(song.id, settings.translateEngine, settings.translateTarget, it)
+            }
             .onFailure { translateError = it.message ?: "Translation failed" }
         translating = false
     }
@@ -169,14 +176,25 @@ fun LyricsPanel(song: Song) {
             item {
                 Row(Modifier.fillMaxWidth().padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Source: " + when (current.source) { "server" -> "Navidrome"; "lrclib" -> "LRCLIB"; else -> current.source } + if (current.synced) " (synced)" else "",
+                        "Lyrics: " + when (current.source) { "server" -> "Navidrome"; "lrclib" -> "LRCLIB"; else -> current.source } + (if (current.synced) " (synced)" else "") +
+                            (if (showTranslation && translated != null) " • Translation: " + (translatedBy ?: engineLabel(settings.translateEngine)) else ""),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
+                    if (showTranslation) IconButton({ app.translations.clear(song.id); translated = null; retranslate++ }) { Icon(Icons.Rounded.Translate, "Translate again") }
                     IconButton({ app.lyrics.clearCache(song); doc = null; reloadTick++ }) { Icon(Icons.Rounded.Refresh, "Reload lyrics") }
                 }
             }
         }
     }
+}
+
+fun engineLabel(engine: String) = when (engine) {
+    "gemini" -> "Gemini"
+    "deepl" -> "DeepL"
+    "openai" -> "AI model"
+    "libre" -> "LibreTranslate"
+    "device" -> "On device"
+    else -> "Google Translate"
 }

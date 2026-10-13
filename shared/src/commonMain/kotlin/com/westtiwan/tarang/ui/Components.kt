@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Album
+import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -100,7 +101,8 @@ fun CoverArt(
     icon: ImageVector = Icons.Rounded.MusicNote,
 ) {
     val app = LocalApp.current
-    val url = remember(coverArt, size) { app.coverUrl(coverArt, size) }
+    val epoch by app.coverEpoch.collectAsState()
+    val url = remember(coverArt, size, epoch) { app.coverUrl(coverArt, size) }
     Box(modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
         if (url == null) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f), modifier = Modifier.fillMaxSize(0.4f))
@@ -121,7 +123,8 @@ fun CoverArt(
 fun ArtistImage(artistId: String?, coverArt: String?, modifier: Modifier = Modifier, size: Int = 300, shape: Shape = CircleShape) {
     val app = LocalApp.current
     val art by app.artistArt.state.collectAsState()
-    val override = artistId?.let { art.images[it] }
+    val epoch by app.coverEpoch.collectAsState()
+    val override = artistId?.let { art.images[it] }?.let { if (epoch > 0 && it.startsWith("http")) "$it#$epoch" else it }
     if (override == null) {
         CoverArt(coverArt, modifier, size = size, shape = shape, icon = Icons.Rounded.Person)
         return
@@ -248,6 +251,7 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
     val nav = LocalNav.current
     var addToPlaylist by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf(false) }
+    var clear by remember { mutableStateOf(false) }
     val downloaded = app.downloads.isDownloaded(song.id)
     DropdownMenu(expanded, onDismiss) {
         DropdownMenuItem({ Text("Play next") }, { app.player.playNext(listOf(song)); app.toast("Playing next"); onDismiss() }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null) })
@@ -273,10 +277,12 @@ fun SongMenu(song: Song, expanded: Boolean, onDismiss: () -> Unit, extra: (@Comp
         song.albumId?.let { id -> DropdownMenuItem({ Text("Go to album") }, { nav.push(Screen.AlbumDetail(id)); onDismiss() }, leadingIcon = { Icon(Icons.Rounded.Album, null) }) }
         song.artistId?.let { id -> DropdownMenuItem({ Text("Go to artist") }, { nav.push(Screen.ArtistDetail(id)); onDismiss() }, leadingIcon = { Icon(Icons.Rounded.Person, null) }) }
         DropdownMenuItem({ Text("Details") }, { info = true }, leadingIcon = { Icon(Icons.Rounded.Info, null) })
+        DropdownMenuItem({ Text("Clear cached data") }, { clear = true }, leadingIcon = { Icon(Icons.Rounded.CleaningServices, null) })
         extra?.invoke(onDismiss)
     }
     if (addToPlaylist) AddToPlaylistDialog(listOf(song)) { addToPlaylist = false; onDismiss() }
     if (info) SongInfoDialog(song) { info = false; onDismiss() }
+    if (clear) ClearCacheDialog(song) { clear = false; onDismiss() }
 }
 
 @Composable
