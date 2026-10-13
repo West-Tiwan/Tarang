@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -112,12 +113,24 @@ fun Root() {
                     }
                 }
             }
+            com.westtiwan.tarang.ui.screens.UpdateBanner(
+                Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.safeDrawing).padding(12.dp).widthIn(max = 560.dp),
+            )
             AnimatedVisibility(
                 nav.nowPlayingOpen,
                 enter = slideInVertically { it } + fadeIn(),
                 exit = slideOutVertically { it } + fadeOut(),
             ) {
                 NowPlaying()
+            }
+            val settings by app.settings.collectAsState()
+            if (app.appVersion != "dev") {
+                // A blank value with a server already set up means an upgrade from a build before this existed.
+                if (settings.lastSeenVersion.isBlank() && settings.servers.isEmpty()) {
+                    androidx.compose.runtime.LaunchedEffect(Unit) { app.updateSettings { it.copy(lastSeenVersion = app.appVersion) } }
+                } else if (settings.lastSeenVersion != app.appVersion) {
+                    com.westtiwan.tarang.ui.screens.WhatsNewSplash(app.appVersion) { app.updateSettings { it.copy(lastSeenVersion = app.appVersion) } }
+                }
             }
             if (toast != null) {
                 Surface(

@@ -36,7 +36,10 @@ private object DesktopUi : PlatformUi() {
 
 fun main() {
     System.setProperty("apple.awt.application.name", "Tarang")
-    val app = AppContainer()
+    val version = System.getProperty("tarang.version") ?: "dev"
+    // Updates only make sense for the packaged app, not for `gradle run`.
+    val packaged = System.getProperty("jpackage.app-path") != null
+    val app = AppContainer(appVersion = if (packaged) version else "dev", updateInstaller = if (packaged) DmgInstaller() else null)
     val player = DesktopPlayer(app)
     app.attachPlayer(player)
     app.start()

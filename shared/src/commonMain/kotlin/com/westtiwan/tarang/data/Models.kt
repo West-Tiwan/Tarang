@@ -275,6 +275,12 @@ data class AppSettings(
     val syncEqToServer: Boolean = true,
     val offlineMode: Boolean = false,
     val lyricsFontScale: Float = 1f,
+    val autoUpdate: Boolean = true,
+    val updateRepo: String = "West-Tiwan/Tarang",
+    /** Read-only GitHub token, only needed while the repo is private. */
+    val githubToken: String = "",
+    /** Last version the user has seen, used to show what's new after an update. */
+    val lastSeenVersion: String = "",
 )
 
 @Serializable

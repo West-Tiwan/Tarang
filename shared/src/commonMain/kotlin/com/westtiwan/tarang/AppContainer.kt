@@ -54,6 +54,8 @@ import kotlin.math.pow
 class AppContainer(
     /** Platform translator, for example on device ML Kit on Android. */
     private val platformTranslator: Translator? = null,
+    val appVersion: String = "dev",
+    updateInstaller: com.westtiwan.tarang.update.UpdateInstaller? = null,
 ) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val http = HttpClient(OkHttp) {
@@ -115,6 +117,11 @@ class AppContainer(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast
     fun toast(msg: String?) { _toast.value = msg }
+
+    val updater = com.westtiwan.tarang.update.Updater(
+        http, appVersion, joinPath(Platform.cacheDir(), "updates"), updateInstaller,
+        repo = { settings.value.updateRepo }, token = { settings.value.githubToken },
+    )
 
     val translations = com.westtiwan.tarang.lyrics.TranslationCache(joinPath(Platform.cacheDir(), "translations"))
 
@@ -220,6 +227,10 @@ class AppContainer(
             merge(eqStore.state.map { it.updatedAt }, smartStore.state.map { it.updatedAt }, artistArt.state.map { it.updatedAt })
                 .distinctUntilChanged().drop(1).debounce(4000)
                 .collect { pushSyncedSettings() }
+        }
+        scope.launch {
+            delay(5000)
+            if (settings.value.autoUpdate && appVersion != "dev") updater.check()
         }
         scope.launch {
             eq.message.collect { m -> if (m != null) { toast(m); eq.consumeMessage() } }

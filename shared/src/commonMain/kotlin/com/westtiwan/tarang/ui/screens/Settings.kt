@@ -144,6 +144,27 @@ fun SettingsScreen() {
         if (!platformUi.isDesktop) Pad { SettingSwitch("Album art colours everywhere", "Use the cover colours for the whole app instead of the wallpaper", s.albumArtEverywhere) { v -> app.updateSettings { it.copy(albumArtEverywhere = v) } } }
         Pad { SettingSwitch("Pure black", "For OLED screens", s.pureBlack) { v -> app.updateSettings { it.copy(pureBlack = v) } } }
 
+        if (app.updater.supported) {
+            val update by app.updater.state.collectAsState()
+            Group("Updates")
+            Pad { SettingSwitch("Check for updates automatically", "Looks for new releases on GitHub when the app starts", s.autoUpdate) { v -> app.updateSettings { it.copy(autoUpdate = v) } } }
+            NavRow(
+                "Check now",
+                when (val u = update) {
+                    is com.westtiwan.tarang.update.UpdateState.Checking -> "Checking..."
+                    is com.westtiwan.tarang.update.UpdateState.UpToDate -> "You're on the latest version (${app.appVersion})"
+                    is com.westtiwan.tarang.update.UpdateState.Available -> "${u.release.version} is available"
+                    is com.westtiwan.tarang.update.UpdateState.Failed -> u.message
+                    else -> "Current version ${app.appVersion}"
+                },
+            ) { app.launch { app.updater.check() } }
+            Pad {
+                OutlinedTextField(s.githubToken, { v -> app.updateSettings { it.copy(githubToken = v.trim()) } }, label = { Text("GitHub token (only for a private repo)") }, singleLine = true,
+                    modifier = Modifier.fillMaxWidth(), visualTransformation = PasswordVisualTransformation())
+                Text("A fine-grained token with read access to the repo's contents is enough.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
         Group("Storage")
         NavRow("Clear lyrics and image cache", formatBytes(Files.size(Platform.cacheDir()))) {
             Files.delete(Platform.cacheDir() + "/lyrics")
@@ -151,7 +172,7 @@ fun SettingsScreen() {
             app.toast("Cache cleared")
         }
 
-        Text("Tarang 1.0.0 • ${Platform.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        Text("Tarang ${app.appVersion} • ${Platform.name}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
     }
 
     when (picker) {

@@ -17,8 +17,10 @@ android {
         applicationId = "com.westtiwan.tarang"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "1.0.0"
+        val appVersion = providers.gradleProperty("tarang.version").get()
+        val (major, minor, patch) = appVersion.split(".").map { it.toInt() }
+        versionCode = major * 10000 + minor * 100 + patch
+        versionName = appVersion
     }
     buildTypes {
         release {
