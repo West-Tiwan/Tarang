@@ -85,13 +85,16 @@ class PlaybackService : MediaLibraryService() {
         val openApp = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).putExtra("open_player", true), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         session = MediaLibrarySession.Builder(this, player, Callback())
             .setSessionActivity(openApp)
+            .setBitmapLoader(SafeBitmapLoader(this))
             .build()
         updateLikeButton()
         outputs.start()
 
         AudioBus.onSelectOutput = { key ->
-            val dev = outputs.select(key)
-            player.setPreferredAudioDevice(dev)
+            scope.launch {
+                val dev = outputs.select(key)
+                player.setPreferredAudioDevice(dev)
+            }
         }
         AudioBus.onRefreshAudio = { scope.launch { applyAudio() } }
         AudioBus.onClearAudioCache = { songId ->
