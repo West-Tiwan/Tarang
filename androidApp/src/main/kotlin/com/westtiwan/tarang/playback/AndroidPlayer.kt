@@ -89,9 +89,15 @@ class AndroidPlayer(private val context: Context, private val app: AppContainer)
         scope.launch { controller?.let { rebuildQueue(it); publish() } }
     }
 
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** MediaController may only be used on the main thread, so every call is routed there. */
     private fun withController(block: (MediaController) -> Unit) {
-        val c = controller
-        if (c != null) block(c) else pending += block
+        val run = {
+            val c = controller
+            if (c != null) block(c) else pending += block
+        }
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) run() else main.post(run)
     }
 
     private fun rebuildQueue(p: Player) {
@@ -193,8 +199,8 @@ class AndroidPlayer(private val context: Context, private val app: AppContainer)
             for (i in 0 until c.mediaItemCount) {
                 if (c.getMediaItemAt(i).mediaId == "song:${song.id}") c.replaceMediaItem(i, song.toMediaItem(app))
             }
+            songs = songs.map { if (it.id == song.id) song else it }
+            publish()
         }
-        songs = songs.map { if (it.id == song.id) song else it }
-        publish()
     }
 }

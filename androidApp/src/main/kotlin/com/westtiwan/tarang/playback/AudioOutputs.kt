@@ -90,7 +90,9 @@ class AudioOutputs(private val context: Context, private val onChanged: () -> Un
 
     fun toOutput(d: AudioDeviceInfo) = OutputDevice("${kind(d).name}:${name(d)}", name(d), kind(d))
 
-    fun refresh() {
+    fun refresh() = runCatching { refreshUnsafe() }.let { }
+
+    private fun refreshUnsafe() {
         devices = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).filter(::relevant).distinctBy { toOutput(it).key }
         AudioBus.outputs.value = devices.map(::toOutput)
         val cur = currentDevice()
@@ -103,7 +105,7 @@ class AudioOutputs(private val context: Context, private val onChanged: () -> Un
     fun currentDevice(): AudioDeviceInfo? {
         preferred?.let { p -> if (devices.any { it.id == p.id }) return p }
         if (Build.VERSION.SDK_INT >= 33) {
-            val routed = am.getAudioDevicesForAttributes(mediaAttrs).firstOrNull()
+            val routed = runCatching { am.getAudioDevicesForAttributes(mediaAttrs).firstOrNull() }.getOrNull()
             if (routed != null) devices.firstOrNull { it.type == routed.type && it.address == routed.address }?.let { return it }
         }
         val order = listOf(OutputDevice.Kind.USB, OutputDevice.Kind.WIRED, OutputDevice.Kind.BLUETOOTH, OutputDevice.Kind.HDMI, OutputDevice.Kind.SPEAKER)
@@ -131,7 +133,7 @@ class AudioOutputs(private val context: Context, private val onChanged: () -> Un
             clearBitPerfect()
             return false
         }
-        return setBitPerfect34(dev, sampleRate ?: 44100, highRes)
+        return runCatching { setBitPerfect34(dev, sampleRate ?: 44100, highRes) }.getOrElse { clearBitPerfect(); false }
     }
 
     @RequiresApi(34)
