@@ -297,7 +297,6 @@ private fun TopRow(st: PlayerState) {
 
 @Composable
 fun AudioPipelineDialog(a: AudioInfo, onDismiss: () -> Unit) {
-    val desktop = com.westtiwan.tarang.ui.LocalPlatformUi.current.isDesktop
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onDismiss) { Text("Close") } },
@@ -318,11 +317,14 @@ fun AudioPipelineDialog(a: AudioInfo, onDismiss: () -> Unit) {
                         step.startsWith("Java Sound") || step.startsWith("AudioTrack") -> "Hand off to the system" to step
                         step.startsWith("Bit-perfect") -> "Mixer" to "Dedicated bit-perfect mixer, nothing else mixed in"
                         step.startsWith("Android mixer") -> "Mixer" to "Android mixes this with other sounds and may resample it"
+                        step.startsWith("Exclusive") -> "Mixer" to "Exclusive access, no other app is mixed in and the DAC runs at the file's sample rate (${step.substringAfter("DAC at ")})"
+                        step.startsWith("Core Audio mixer") -> "Mixer" to "macOS Core Audio mixes this with other apps" + if (step.contains("another app")) ", another app has exclusive use of the DAC" else ""
+                        step.startsWith("DAC volume") -> "Volume" to "Tarang's volume sets the DAC's own volume, the samples stay untouched"
+                        step.startsWith("Volume:") -> "Volume" to step.substringAfter(": ") + ", set it to 100% for bit-perfect"
                         else -> "Step" to step
                     }
                     PathStep(title, detail)
                 }
-                if (desktop) PathStep("Mixer", "macOS Core Audio mixes this with other apps")
                 a.output?.let { PathStep("Output", it + (a.outputRate?.let { r -> " at ${formatKhz(r)} kHz" } ?: "")) }
                 val sameRate = a.outputRate != null && a.outputRate == a.sampleRate
                 Text(

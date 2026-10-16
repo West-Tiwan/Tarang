@@ -94,12 +94,34 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
     private var lineFormat: AudioFormat? = null
     @Volatile private var eqEngine: EqEngine? = null
     private var audioInfo = AudioInfo()
+    /** Exclusive (hog mode) state of the current DAC, when bit-perfect output is on. */
+    @Volatile private var exclusive: CoreAudio.Exclusive? = null
+    /** True when the current track reaches the DAC untouched, apart from Tarang's own volume. */
+    @Volatile private var untouched = false
+    /**
+     * While Tarang holds the DAC, macOS can't change its volume, so Tarang's volume drives the DAC's
+     * own volume control instead of scaling samples.
+     */
+    @Volatile private var hardwareVolume = false
+    private var volumeBeforeExclusive = 1f
 
     init {
+        // Hand the DAC back (and restore the system default output) when the app quits.
+        Runtime.getRuntime().addShutdownHook(Thread { exclusive?.let { CoreAudio.releaseHog(it.device) } })
         refreshOutputs()
         thread(isDaemon = true, name = "tarang-ticker") {
+            var bitPerfectSetting = app.settings.value.bitPerfect
             while (true) {
                 Thread.sleep(500)
+                // Reopen the output when bit-perfect is switched, so it applies to the current song.
+                val bp = app.settings.value.bitPerfect
+                if (bp != bitPerfectSetting) {
+                    bitPerfectSetting = bp
+                    if (currentSong != null && line != null) {
+                        synchronized(writeLock) { generation++; closeLine() }
+                        startTrack(positionMs, playing)
+                    }
+                }
                 publish()
                 if (_outputs.value.isEmpty() || System.currentTimeMillis() % 10_000 < 500) refreshOutputs()
             }
@@ -122,10 +144,20 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
             repeat = repeat,
             speed = speed,
             volume = volume,
-            audio = audioInfo,
+            audio = currentAudio(),
             error = _state.value.error,
         )
     }
+
+    private fun currentAudio(): AudioInfo {
+        if (!untouched) return audioInfo
+        if (hardwareVolume) return audioInfo.copy(bitPerfect = true, pipeline = audioInfo.pipeline + "DAC volume")
+        if (volume >= 0.999f) return audioInfo.copy(bitPerfect = true)
+        return audioInfo.copy(bitPerfect = false, pipeline = audioInfo.pipeline + "Volume: Tarang volume at ${(volume * 100).toInt()}%")
+    }
+
+    /** EQ and replay gain step aside while the DAC is held exclusively, like on Android. */
+    private fun bypassProcessing(): Boolean = app.settings.value.bitPerfect && exclusive?.let { it.usb && it.hog } == true
 
     private fun rebuildOrder(keepCurrent: Boolean) {
         val cur = order.getOrNull(pos)
@@ -175,12 +207,19 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
     override fun pause() {
         playing = false
         line?.stop()
+        // Let other apps use the DAC while paused.
+        exclusive?.let { CoreAudio.releaseHog(it.device) }
         publish()
     }
 
     override fun resume() {
         if (currentSong == null) return
         if (decoderAlive) {
+            exclusive?.let { ex ->
+                CoreAudio.takeHog(ex.device)
+                // The volume may have been changed from the Mac while paused.
+                if (hardwareVolume) CoreAudio.hardwareVolume(ex.device)?.let { volume = it }
+            }
             playing = true
             line?.start()
         } else {
@@ -254,7 +293,11 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
         // Time stretching is not implemented in the desktop engine yet.
         if (speed != 1f) app.toast("Playback speed is only available on Android for now")
     }
-    override fun setVolume(volume: Float) { this.volume = volume.coerceIn(0f, 1f); publish() }
+    override fun setVolume(volume: Float) {
+        this.volume = volume.coerceIn(0f, 1f)
+        exclusive?.takeIf { hardwareVolume }?.let { CoreAudio.setHardwareVolume(it.device, this.volume) }
+        publish()
+    }
 
     override fun selectOutput(key: String?) {
         selectedMixer = AudioSystem.getMixerInfo().firstOrNull { outputKey(it) == key }
@@ -318,6 +361,13 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
         line?.let { runCatching { it.stop(); it.flush(); it.close() } }
         line = null
         lineFormat = null
+        exclusive?.let { CoreAudio.releaseHog(it.device) }
+        exclusive = null
+        if (hardwareVolume) {
+            // Back to scaling samples, starting from where the DAC volume was left.
+            hardwareVolume = false
+            volume = volumeBeforeExclusive
+        }
     }
 
     private fun sourceFor(song: Song): Pair<String, String>? {
@@ -396,7 +446,8 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
         if (rate == null || channels == null) return
         val eqState = app.eqStore.value
         val engine = eqEngine ?: EqEngine(rate, channels).also { eqEngine = it }
-        engine.configure(eqState.current, eqState.enabled, app.replayGainDb(currentSong, false))
+        val bypass = bypassProcessing()
+        engine.configure(eqState.current, eqState.enabled && !bypass, if (bypass) 0.0 else app.replayGainDb(currentSong, false))
     }
 
     private fun openLine(fmt: PcmFormat): SourceDataLine {
@@ -405,9 +456,32 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
         val current = line
         if (current != null && lineFormat?.matches(target) == true) return current
         closeLine()
-        val mixer = selectedMixer
+        var mixer = selectedMixer
+        if (app.settings.value.bitPerfect) {
+            // Take the DAC and switch it to this track's rate before Java Sound opens it.
+            CoreAudio.deviceFor(mixer?.name)?.let { dev ->
+                val ex = CoreAudio.makeExclusive(dev, fmt.sampleRate, bits, fmt.channels)
+                exclusive = ex
+                if (ex?.hog == true) {
+                    // Pick up the DAC's current volume rather than jumping to Tarang's, which could be loud.
+                    CoreAudio.hardwareVolume(dev)?.let { hw ->
+                        if (!hardwareVolume) volumeBeforeExclusive = volume
+                        volume = hw
+                        hardwareVolume = true
+                    }
+                }
+                // While hogged the DAC stops being the system default, so open it by name rather than
+                // through the default device, which would now be the speakers.
+                if (ex?.hog == true) {
+                    AudioSystem.getMixerInfo().firstOrNull { it.name == ex.name && AudioSystem.getMixer(it).sourceLineInfo.any { l -> l.lineClass == SourceDataLine::class.java } }
+                        ?.let { mixer = it }
+                }
+                DevLog.log("EXCLUSIVE $ex want=${fmt.sampleRate}/$bits mixer=${mixer?.name} hwVolume=${CoreAudio.hardwareVolume(dev)}")
+            }
+        }
         fun tryOpen(f: AudioFormat): SourceDataLine {
-            val l = if (mixer != null) AudioSystem.getSourceDataLine(f, mixer) else AudioSystem.getSourceDataLine(f)
+            val m = mixer
+            val l = if (m != null) AudioSystem.getSourceDataLine(f, m) else AudioSystem.getSourceDataLine(f)
             l.open(f, (f.frameRate * f.frameSize / 4).toInt())
             return l
         }
@@ -456,16 +530,24 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
             }
             if (startMs > 0) decoder.skipFrames(startMs * fmt.sampleRate / 1000)
             var framesPlayed = startMs * fmt.sampleRate / 1000
+            val ex = exclusive
+            val bypass = bypassProcessing()
+            val eq = app.eqStore.value
+            val rg = if (bypass) 0.0 else app.replayGainDb(song, false)
+            val eqOn = eq.enabled && !bypass
+            val deviceRate = ex?.rate ?: l.format.sampleRate.toInt()
+            untouched = ex != null && ex.hog && ex.rate == fmt.sampleRate && (ex.bits ?: 0) >= fmt.bitDepth &&
+                l.format.sampleSizeInBits >= fmt.bitDepth && l.format.sampleRate.toInt() == fmt.sampleRate && !eqOn && rg == 0.0
             audioInfo = AudioInfo(
                 codec = fmt.codec, sampleRate = fmt.sampleRate, bitDepth = fmt.bitDepth, channels = fmt.channels, bitrate = song.bitRate?.let { it * 1000 },
-                bitPerfect = false, output = _current.value?.name, outputRate = l.format.sampleRate.toInt(),
+                bitPerfect = false, output = ex?.name ?: _current.value?.name, outputRate = deviceRate,
                 pipeline = buildList {
                     add("Decoder: ${fmt.codec.uppercase()} (pure Java)")
-                    val eq = app.eqStore.value
-                    if (eq.enabled) add("EQ: ${eq.current.name}")
-                    val rg = app.replayGainDb(song, false)
+                    if (eq.enabled && bypass) add("EQ bypassed") else if (eqOn) add("EQ: ${eq.current.name}")
                     if (rg != 0.0) add("Replay gain ${(rg * 10).toInt() / 10.0} dB")
                     add("Java Sound ${l.format.sampleSizeInBits}-bit ${l.format.sampleRate.toInt()} Hz")
+                    if (ex != null && ex.hog) add("Exclusive: hog mode, DAC at ${deviceRate} Hz" + (ex.bits?.let { ", $it-bit" } ?: ""))
+                    else add("Core Audio mixer" + if (ex != null) " (another app holds the DAC)" else "")
                 },
                 source = if (track.complete && song.streamUrlOverride == null && app.downloads.isDownloaded(song.id)) "Downloaded file" else "Stream from server",
             )
@@ -487,15 +569,16 @@ class DesktopPlayer(private val app: AppContainer) : PlayerController {
                 val n = decoder.read(buf)
                 if (n < 0) break
                 eqEngine?.process(buf, n)
-                val v = volume
+                val v = if (hardwareVolume) 1f else volume
                 var o = 0
                 for (i in 0 until n) {
-                    val s = (buf[i] * v).coerceIn(-1f, 1f)
+                    val s = buf[i] * v
+                    // Exact inverse of the decoder's scaling, so untouched samples come out unchanged.
                     if (bytesPer == 3) {
-                        val x = (s * 8_388_607f).toInt()
+                        val x = (s * 8_388_608f).toInt().coerceIn(-8_388_608, 8_388_607)
                         out[o++] = x.toByte(); out[o++] = (x shr 8).toByte(); out[o++] = (x shr 16).toByte()
                     } else {
-                        val x = (s * 32_767f).toInt()
+                        val x = (s * 32_768f).toInt().coerceIn(-32_768, 32_767)
                         out[o++] = x.toByte(); out[o++] = (x shr 8).toByte()
                     }
                 }

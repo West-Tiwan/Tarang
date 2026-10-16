@@ -1,6 +1,12 @@
 package com.westtiwan.tarang.desktop
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isMetaPressed
@@ -15,12 +21,32 @@ import androidx.compose.ui.window.rememberWindowState
 import com.westtiwan.tarang.App
 import com.westtiwan.tarang.AppContainer
 import com.westtiwan.tarang.ui.Navigator
+import com.westtiwan.tarang.eq.OutputDevice
 import com.westtiwan.tarang.ui.PlatformUi
+import com.westtiwan.tarang.ui.screens.SettingSwitch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
-private object DesktopUi : PlatformUi() {
+private class DesktopUi(private val app: AppContainer, private val player: DesktopPlayer) : PlatformUi() {
     override val isDesktop = true
+
+    override val audioSettings: (@Composable () -> Unit) = {
+        val s by app.settings.collectAsState()
+        val st by player.state.collectAsState()
+        val current by player.currentOutput.collectAsState()
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            SettingSwitch(
+                "Bit-perfect USB DAC output",
+                when {
+                    !s.bitPerfect -> "Off: macOS mixes Tarang with other apps and may resample it"
+                    st.audio.bitPerfect -> "Active: ${st.audio.output} receives untouched audio at ${st.audio.outputRate?.let { "${it / 1000.0} kHz" } ?: "the track's rate"}"
+                    current?.kind == OutputDevice.Kind.USB -> "On: plays exclusively to ${current?.name} at the track's sample rate once something is playing, with Tarang volume at 100%"
+                    else -> "On: takes effect when a USB DAC is the output"
+                } + ". While playing, other apps can't use the DAC and the Mac volume keys can't change it, so use Tarang's volume, which sets the DAC's own volume. The EQ and replay gain are bypassed.",
+                s.bitPerfect,
+            ) { v -> app.updateSettings { it.copy(bitPerfect = v) } }
+        }
+    }
     override val supportsImagePicking = true
 
     override suspend fun pickImage(): ByteArray? = suspendCancellableCoroutine { cont ->
@@ -43,6 +69,7 @@ fun main() {
     val player = DesktopPlayer(app)
     app.attachPlayer(player)
     app.start()
+    val ui = DesktopUi(app, player)
     application {
         val nav = remember { Navigator() }
         val state = rememberWindowState(size = DpSize(1280.dp, 820.dp), position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center))
@@ -66,7 +93,7 @@ fun main() {
             },
         ) {
             window.minimumSize = java.awt.Dimension(420, 640)
-            App(app, nav, DesktopUi)
+            App(app, nav, ui)
         }
     }
 }

@@ -21,6 +21,7 @@ dependencies {
     implementation(libs.coroutines.swing)
     implementation(libs.jflac)
     implementation(libs.jlayer)
+    implementation(libs.jna)
 }
 
 compose.desktop {
